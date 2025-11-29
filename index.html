@@ -142,7 +142,7 @@
       transform: scale(1.05);
     }
 
-    /* UI Buttons (Location) */
+    /* UI Buttons (Camera + Location) */
     .ui-buttons {
       position: fixed;
       top: 20px;
@@ -169,6 +169,61 @@
     .ui-buttons button:hover, .ui-buttons a:hover { background: rgba(255, 255, 255, 0.4); }
 
     .ui-buttons button img, .ui-buttons a img { width: 25px; height: 25px; }
+
+    /* 🌟 Snapshot Modal (NEW) */
+    #snapshot-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      display: none; /* shown as flex in JS */
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    }
+
+    #snapshot-modal .modal-content {
+      background: #111;
+      padding: 18px;
+      border-radius: 12px;
+      width: 90vw;
+      max-width: 420px;
+      text-align: center;
+      position: relative;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+    }
+
+    .close-btn {
+      position: absolute;
+      right: 12px;
+      top: 8px;
+      font-size: 26px;
+      cursor: pointer;
+      color: #fff;
+    }
+
+    #snapshot-preview {
+      width: 100%;
+      max-height: 60vh;
+      object-fit: contain;
+      border-radius: 10px;
+      margin-bottom: 12px;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    .action-buttons button {
+      background-color: #FFB800;
+      color: #000;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -181,7 +236,14 @@
     <img src="logo.png" alt="Overlay Jewels Logo" class="logo-icon" />
   </div>
 
+  <!-- 🔸 TOP RIGHT: Camera + Location -->
   <div class="ui-buttons">
+    <!-- NEW camera button -->
+    <button id="capture-btn">
+      <img src="camera_icon.png" alt="Capture" />
+    </button>
+
+    <!-- Existing location button (unchanged) -->
     <a id="location-btn" href="https://maps.app.goo.gl/gsTuBCVMUVk9cxYZ6" target="_blank" rel="noopener noreferrer">
       <img src="location_icon.png" alt="Location" />
     </a>
@@ -199,12 +261,26 @@
   
   <div id="jewelry-options" class="options-group" style="display: none;"></div>
 
+  <!-- 🌟 SNAPSHOT POPUP (NEW) -->
+  <div id="snapshot-modal">
+    <div class="modal-content">
+      <span id="close-snapshot" class="close-btn">&times;</span>
+      <h3>Your Look</h3>
+      <img id="snapshot-preview" alt="Snapshot preview" />
+      <div class="action-buttons">
+        <button id="download-btn">Download</button>
+        <button id="share-btn">Share</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mediapipe -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
   <script>
     /* ===========================
-       MAIN APP CODE
+       MAIN APP CODE (unchanged logic)
     ============================ */
     const videoElement = document.getElementById('webcam');
     const canvasElement = document.getElementById('overlay');
@@ -221,14 +297,14 @@
     let camera;
     let smoothedFacePoints = {};
 
-   const API_KEY = "AIzaSyBhi05HMVGg90dPP91zG1RZtNxm-d6hnQw";
+    const API_KEY = "AIzaSyBhi05HMVGg90dPP91zG1RZtNxm-d6hnQw";
 
-const driveFolders = {
-  diamond_earrings: "1N0jndAEIThUuuNAJpvuRMGsisIaXCgMZ",
-  diamond_necklaces: "1JGV8T03YdzjfW0Dyt9aMPybH8V9-gEhw",
-  gold_earrings: "1GMZpcv4A1Gy2xiaIC1XPG_IOAt9NrDpi",
-  gold_necklaces: "1QIvX-PrSVrK9gz-TEksqiKlXPGv2hsS5",
-};
+    const driveFolders = {
+      diamond_earrings: "1N0jndAEIThUuuNAJpvuRMGsisIaXCgMZ",
+      diamond_necklaces: "1JGV8T03YdzjfW0Dyt9aMPybH8V9-gEhw",
+      gold_earrings: "1GMZpcv4A1Gy2xiaIC1XPG_IOAt9NrDpi",
+      gold_necklaces: "1QIvX-PrSVrK9gz-TEksqiKlXPGv2hsS5",
+    };
 
     async function fetchDriveImages(folderId) {
       const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents&key=${API_KEY}&fields=files(id,name,mimeType)`;
@@ -294,7 +370,12 @@ const driveFolders = {
     const faceMesh = new FaceMesh({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
     });
-    faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
+    });
 
     faceMesh.onResults((results) => {
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
@@ -342,22 +423,17 @@ const driveFolders = {
       };
     }
 
-    /* ===========================
-       DRAW JEWELRY (Dynamic earrings)
-    ============================ */
     function drawJewelry(faceLandmarks, ctx) {
       if (faceLandmarks) {
         const vw = canvasElement.width;
         const vh = canvasElement.height;
 
-        // --- Eye distance for scaling earrings ---
         const Leye = faceLandmarks[33];
         const Reye = faceLandmarks[263];
         const dx = (Reye.x - Leye.x) * vw;
         const dy = (Reye.y - Leye.y) * vh;
         const eyeDist = Math.hypot(dx, dy);
 
-        // --- Ear Landmarks ---
         const leftEar = faceLandmarks[132];
         const rightEar = faceLandmarks[361];
         let leftEarPos = { x: leftEar.x * vw, y: leftEar.y * vh };
@@ -366,9 +442,8 @@ const driveFolders = {
         smoothedFacePoints.leftEar = smoothPoint(smoothedFacePoints.leftEar, leftEarPos);
         smoothedFacePoints.rightEar = smoothPoint(smoothedFacePoints.rightEar, rightEarPos);
 
-        // --- Earrings ---
         if (earringImg) {
-          const scaleFactor = 0.4; // adjust if needed
+          const scaleFactor = 0.4;
           const w = eyeDist * scaleFactor;
           const h = w * (earringImg.height / earringImg.width);
 
@@ -376,13 +451,12 @@ const driveFolders = {
           ctx.drawImage(earringImg, smoothedFacePoints.rightEar.x - w / 2, smoothedFacePoints.rightEar.y, w, h);
         }
 
-        // --- Necklace ---
         if (necklaceImg) {
           const neck = faceLandmarks[152];
           let neckPos = { x: neck.x * vw, y: neck.y * vh + 10 };
           smoothedFacePoints.neck = smoothPoint(smoothedFacePoints.neck, neckPos);
 
-          const necklaceScale = 0.25; // adjust if needed
+          const necklaceScale = 0.25;
           const w = necklaceImg.width * necklaceScale;
           const h = necklaceImg.height * necklaceScale;
 
@@ -392,7 +466,82 @@ const driveFolders = {
     }
 
     /* ===========================
-       DISABLE RIGHT CLICK & DEV TOOLS
+       📸 SNAPSHOT + DOWNLOAD + SHARE (NEW)
+    ============================ */
+    const captureBtn = document.getElementById('capture-btn');
+    const snapshotModal = document.getElementById('snapshot-modal');
+    const snapshotPreview = document.getElementById('snapshot-preview');
+    const closeSnapshotBtn = document.getElementById('close-snapshot');
+    const downloadBtn = document.getElementById('download-btn');
+    const shareBtn = document.getElementById('share-btn');
+    let lastSnapshotDataURL = '';
+
+    function takeSnapshot() {
+      if (!canvasElement.width || !canvasElement.height) {
+        alert("Camera not ready yet, please try again.");
+        return;
+      }
+
+      const snapshotCanvas = document.createElement('canvas');
+      snapshotCanvas.width = canvasElement.width;
+      snapshotCanvas.height = canvasElement.height;
+      const snapCtx = snapshotCanvas.getContext('2d');
+
+      // draw camera frame
+      snapCtx.drawImage(videoElement, 0, 0, snapshotCanvas.width, snapshotCanvas.height);
+
+      // draw jewelry overlays
+      if (smoothedFaceLandmarks) {
+        drawJewelry(smoothedFaceLandmarks, snapCtx);
+      }
+
+      lastSnapshotDataURL = snapshotCanvas.toDataURL('image/png');
+      snapshotPreview.src = lastSnapshotDataURL;
+      snapshotModal.style.display = 'flex';
+    }
+
+    function closeSnapshotModal() {
+      snapshotModal.style.display = 'none';
+    }
+
+    function downloadSnapshot() {
+      if (!lastSnapshotDataURL) return;
+      const link = document.createElement('a');
+      link.href = lastSnapshotDataURL;
+      link.download = 'jewelry-tryon.png';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    function shareSnapshot() {
+      if (!lastSnapshotDataURL) return;
+
+      if (!navigator.share || !navigator.canShare) {
+        alert('Sharing not supported on this device. Please download instead.');
+        return;
+      }
+
+      fetch(lastSnapshotDataURL)
+        .then(res => res.blob())
+        .then(blob => {
+          const file = new File([blob], 'jewelry-tryon.png', { type: 'image/png' });
+          return navigator.share({
+            title: 'My Jewelry Try-On',
+            text: 'Check out my look!',
+            files: [file],
+          });
+        })
+        .catch(err => console.error(err));
+    }
+
+    captureBtn.addEventListener('click', takeSnapshot);
+    closeSnapshotBtn.addEventListener('click', closeSnapshotModal);
+    downloadBtn.addEventListener('click', downloadSnapshot);
+    shareBtn.addEventListener('click', shareSnapshot);
+
+    /* ===========================
+       DISABLE RIGHT CLICK & DEV TOOLS (unchanged)
     ============================ */
     document.addEventListener('contextmenu', (e) => e.preventDefault());
     document.onkeydown = function(e) {
